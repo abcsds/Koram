@@ -1,6 +1,6 @@
 <script>
   import { API } from '../constants.js';
-  import { settings } from '../store.js';
+  import { settings } from '../store.svelte.js';
   import { formatCount } from '../utils.js';
 
   let { person } = $props(); // { id, name, total }

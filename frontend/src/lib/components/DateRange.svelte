@@ -1,5 +1,5 @@
 <script>
-  import { settings } from '../store.js';
+  import { settings } from '../store.svelte.js';
 
   let allTime = $state(!settings.dateFrom && !settings.dateTo);
 

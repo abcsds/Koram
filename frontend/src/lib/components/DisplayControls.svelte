@@ -1,5 +1,5 @@
 <script>
-  import { settings } from '../store.js';
+  import { settings } from '../store.svelte.js';
 
   let { selectedPeople } = $props();   // Array of currently selected person objects (for the unnamed-disable check)
 

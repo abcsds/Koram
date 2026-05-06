@@ -2,7 +2,7 @@
   import DateRange from './DateRange.svelte';
   import DisplayControls from './DisplayControls.svelte';
   import PeopleList from './PeopleList.svelte';
-  import { settings, graphState } from '../store.js';
+  import { settings, graphState } from '../store.svelte.js';
   import { computeGraph, cancelGraph } from '../api.js';
 
   let { people, setLastJobKey } = $props();   // all people from /api/people; lifecycle hook from App

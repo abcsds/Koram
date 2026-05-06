@@ -1,6 +1,6 @@
 <script>
   import ConnectionStatus from './ConnectionStatus.svelte';
-  import { graphState, settings } from '../store.js';
+  import { graphState, settings } from '../store.svelte.js';
   import { formatCount } from '../utils.js';
 
   let { onToggleDrawer, canvasContainer = null } = $props();

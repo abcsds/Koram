@@ -6,7 +6,7 @@
   import { buildSimulation, reweight, computeNodeRadius } from '../graph/force.js';
   import { draw, hitTestEdge } from '../graph/render-canvas.js';
   import { jaccard } from '../graph/jaccard.js';
-  import { settings, graphState } from '../store.js';
+  import { settings, graphState } from '../store.svelte.js';
   import { API } from '../constants.js';
 
   let canvasEl = $state(null);

@@ -4,8 +4,8 @@
   import SettingsDrawer from './lib/components/SettingsDrawer.svelte';
   import GraphCanvas from './lib/components/GraphCanvas.svelte';
   import ExportFab from './lib/components/ExportFab.svelte';
-  import { settings, graphState } from './lib/store.js';
-  import { hydrate, trackPersistence } from './lib/persistence.js';
+  import { settings, graphState } from './lib/store.svelte.js';
+  import { hydrate, trackPersistence } from './lib/persistence.svelte.js';
   import { getPeople, getConnection, openProgressSocket } from './lib/api.js';
   import { API } from './lib/constants.js';
 

@@ -1,7 +1,7 @@
 <script>
   import { exportPng } from '../graph/png-export.js';
   import { jaccard } from '../graph/jaccard.js';
-  import { settings, graphState } from '../store.js';
+  import { settings, graphState } from '../store.svelte.js';
   import { uploadToImmich } from '../api.js';
   import { downloadBlob } from '../utils.js';
 

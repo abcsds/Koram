@@ -1,6 +1,6 @@
 <script>
   import PersonRow from './PersonRow.svelte';
-  import { settings } from '../store.js';
+  import { settings } from '../store.svelte.js';
 
   let { people } = $props();   // Array<{id, name, total}>
 
