@@ -1,0 +1,14 @@
+# Copy to config/koram.toml (gitignored). Koram also auto-creates a default
+# config on first run if this file is absent. Environment variables IMMICH_API_KEY
+# and IMMICH_BASE_URL override the [api] block when set.
+
+[api]
+api_key = ""
+base_url = ""
+timeout_secs = 30
+
+# Where co-occurrence results are cached on disk. One JSON per (person_set, date_range).
+cache_dir = "cache"
+
+# Album name used when uploading exports back to Immich.
+album_name = "Koram Graphs"

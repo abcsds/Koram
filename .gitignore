@@ -1,7 +1,8 @@
 target/
 node_modules/
 frontend/dist/
-config/
+config/*
+!config/koram.example.toml
 cache/
 .env
 *.swp
