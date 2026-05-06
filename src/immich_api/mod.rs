@@ -64,6 +64,19 @@ struct SearchParams {
     with_people: bool,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Album {
+    pub id: String,
+    pub album_name: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadResponse {
+    pub id: String,
+}
+
 impl ImmichClient {
     pub fn new(config: &ApiConfig) -> Result<Self> {
         let client = Client::builder()
@@ -152,6 +165,68 @@ impl ImmichClient {
             if page > 1000 { tracing::warn!("Pagination cap hit"); break; }
         }
         Ok(all)
+    }
+
+    pub async fn get_albums(&self) -> Result<Vec<Album>> {
+        let url = format!("{}/albums", self.base_url);
+        let resp = self.client.get(&url).header("x-api-key", &self.api_key).send().await?;
+        let resp = Self::check(resp, "Get albums").await?;
+        Ok(resp.json().await?)
+    }
+
+    pub async fn create_album(&self, name: &str) -> Result<Album> {
+        let url = format!("{}/albums", self.base_url);
+        let body = serde_json::json!({ "albumName": name });
+        let resp = self.client.post(&url)
+            .header("x-api-key", &self.api_key)
+            .json(&body).send().await?;
+        let resp = Self::check(resp, "Create album").await?;
+        Ok(resp.json().await?)
+    }
+
+    pub async fn ensure_album(&self, name: &str) -> Result<Album> {
+        for a in self.get_albums().await? {
+            if a.album_name == name { return Ok(a); }
+        }
+        self.create_album(name).await
+    }
+
+    pub async fn add_assets_to_album(&self, album_id: &str, asset_ids: &[String]) -> Result<()> {
+        let url = format!("{}/albums/{}/assets", self.base_url, urlencode(album_id));
+        let body = serde_json::json!({ "ids": asset_ids });
+        let resp = self.client.put(&url)
+            .header("x-api-key", &self.api_key)
+            .json(&body).send().await?;
+        Self::check(resp, "Add assets to album").await?;
+        Ok(())
+    }
+
+    /// Upload a PNG asset. Returns the new asset's Immich ID.
+    pub async fn upload_asset(
+        &self,
+        png_bytes: bytes::Bytes,
+        device_asset_id: &str,
+        file_created_at: &str,
+    ) -> Result<UploadResponse> {
+        let url = format!("{}/assets", self.base_url);
+
+        let part = reqwest::multipart::Part::bytes(png_bytes.to_vec())
+            .file_name(format!("{}.png", device_asset_id))
+            .mime_str("image/png")
+            .map_err(|e| Error::ImmichApi(format!("Mime: {e}")))?;
+
+        let form = reqwest::multipart::Form::new()
+            .text("deviceAssetId", device_asset_id.to_string())
+            .text("deviceId", "koram".to_string())
+            .text("fileCreatedAt", file_created_at.to_string())
+            .text("fileModifiedAt", file_created_at.to_string())
+            .part("assetData", part);
+
+        let resp = self.client.post(&url)
+            .header("x-api-key", &self.api_key)
+            .multipart(form).send().await?;
+        let resp = Self::check(resp, "Upload asset").await?;
+        Ok(resp.json().await?)
     }
 }
 
