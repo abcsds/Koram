@@ -1,0 +1,8 @@
+target/
+node_modules/
+frontend/dist/
+config/
+cache/
+.env
+*.swp
+.DS_Store
