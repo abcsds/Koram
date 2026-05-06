@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Koram — Face co-occurrence graph for Immich</title>
+  <meta name="description" content="An interactive force-directed graph of who appears with whom across your Immich photo library. Self-hosted, exportable, no recognition." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='10' cy='12' r='4' fill='%237C3AED'/%3E%3Ccircle cx='22' cy='20' r='4' fill='%230891B2'/%3E%3Cline x1='10' y1='12' x2='22' y2='20' stroke='%230891B2' stroke-width='1.5'/%3E%3C/svg%3E" />
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+    :root {
+      --bg-deep: #020203;
+      --bg-base: #050506;
+      --bg-elevated: #0a0a0c;
+      --surface: rgba(255, 255, 255, 0.04);
+      --surface-hover: rgba(255, 255, 255, 0.07);
+      --border: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.14);
+      --foreground: #EDEDEF;
+      --foreground-muted: #8A8F98;
+      --accent: #7C3AED;
+      --accent-strong: #8B5CF6;
+      --accent-glow: rgba(124, 58, 237, 0.20);
+      --edge: #0891B2;
+      --edge-glow: rgba(8, 145, 178, 0.18);
+      --radius: 16px;
+      --radius-control: 8px;
+      --easing: cubic-bezier(0.16, 1, 0.3, 1);
+      --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg-base);
+      color: var(--foreground);
+      font-family: var(--font-sans);
+      font-size: 16px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    body {
+      overflow-x: hidden;
+      background:
+        radial-gradient(1200px 800px at 80% -10%, var(--accent-glow), transparent 70%),
+        radial-gradient(900px 700px at -10% 30%, var(--edge-glow), transparent 70%),
+        var(--bg-base);
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* ───── Top nav ───── */
+    .top-nav {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      background: rgba(5, 5, 6, 0.55);
+      border-bottom: 1px solid var(--border);
+    }
+    .top-nav-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 56px;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 500;
+      letter-spacing: 0.2px;
+    }
+    .brand-mark {
+      width: 26px;
+      height: 26px;
+    }
+    .nav-cta {
+      font-size: 13px;
+      color: var(--foreground-muted);
+      transition: color 200ms var(--easing);
+    }
+    .nav-cta:hover { color: var(--foreground); }
+
+    /* ───── Buttons ───── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 18px;
+      border-radius: var(--radius-control);
+      border: 1px solid var(--border);
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition:
+        background 220ms var(--easing),
+        border-color 220ms var(--easing),
+        color 220ms var(--easing),
+        transform 220ms var(--easing);
+      background: var(--surface);
+      color: var(--foreground);
+    }
+    .btn:hover { background: var(--surface-hover); border-color: var(--border-strong); }
+    .btn:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
+
+    .btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .btn.primary:hover { filter: brightness(1.08); border-color: var(--accent-strong); }
+
+    .btn .arrow { transition: transform 220ms var(--easing); }
+    .btn:hover .arrow { transform: translateX(2px); }
+
+    /* ───── Hero ───── */
+    .hero {
+      padding: 96px 0 80px;
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 48px;
+      align-items: center;
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      color: var(--foreground-muted);
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--surface);
+    }
+    .eyebrow .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--edge);
+      box-shadow: 0 0 10px var(--edge);
+    }
+
+    h1 {
+      margin: 20px 0 14px;
+      font-family: var(--font-sans);
+      font-size: clamp(36px, 4.6vw, 56px);
+      line-height: 1.05;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    .lede {
+      max-width: 36ch;
+      color: var(--foreground-muted);
+      font-size: 17px;
+      line-height: 1.55;
+      margin: 0 0 28px;
+    }
+    .ctas { display: flex; gap: 12px; flex-wrap: wrap; }
+
+    .hero-graph {
+      width: 100%;
+      aspect-ratio: 5 / 4;
+      position: relative;
+    }
+    .hero-graph svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* ───── Section primitives ───── */
+    section {
+      padding: 96px 0;
+    }
+    section + section { padding-top: 0; }
+
+    .section-head { margin-bottom: 40px; max-width: 720px; }
+    .section-eyebrow {
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      color: var(--foreground-muted);
+      margin-bottom: 10px;
+    }
+    .section-title {
+      font-size: clamp(26px, 2.6vw, 34px);
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      line-height: 1.15;
+      margin: 0;
+    }
+
+    /* ───── Feature cards ───── */
+    .features {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px 22px 24px;
+      transition:
+        background 240ms var(--easing),
+        border-color 240ms var(--easing),
+        transform 240ms var(--easing);
+    }
+    .card:hover {
+      background: var(--surface-hover);
+      border-color: var(--border-strong);
+      transform: translateY(-2px);
+    }
+    .card-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      background: rgba(124, 58, 237, 0.12);
+      border: 1px solid rgba(124, 58, 237, 0.30);
+      margin-bottom: 16px;
+    }
+    .card-icon svg { width: 20px; height: 20px; color: var(--accent-strong); }
+    .card h3 {
+      margin: 0 0 6px;
+      font-size: 16px;
+      font-weight: 500;
+      letter-spacing: -0.005em;
+    }
+    .card p {
+      margin: 0;
+      color: var(--foreground-muted);
+      font-size: 14.5px;
+      line-height: 1.55;
+    }
+
+    /* ───── Showcase (How it looks) ───── */
+    .showcase {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      overflow: hidden;
+      padding: 28px;
+    }
+    .showcase-svg {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      display: block;
+      border-radius: 14px;
+      background:
+        radial-gradient(640px 460px at 65% 35%, rgba(124, 58, 237, 0.10), transparent 70%),
+        radial-gradient(520px 420px at 25% 80%, rgba(8, 145, 178, 0.10), transparent 70%),
+        var(--bg-deep);
+    }
+    .showcase-caption {
+      margin-top: 14px;
+      text-align: center;
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+      letter-spacing: 0.5px;
+      color: var(--foreground-muted);
+    }
+
+    /* ───── How it works ───── */
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+      counter-reset: step;
+    }
+    .step {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+    }
+    .step-num {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--accent-strong);
+      letter-spacing: 0.6px;
+      margin-bottom: 14px;
+    }
+    .step h3 {
+      margin: 0 0 6px;
+      font-size: 16px;
+      font-weight: 500;
+    }
+    .step p {
+      margin: 0;
+      color: var(--foreground-muted);
+      font-size: 14.5px;
+      line-height: 1.55;
+    }
+    .step code {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      background: rgba(255, 255, 255, 0.045);
+      padding: 1px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      color: var(--foreground);
+    }
+
+    /* ───── Install ───── */
+    .install-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+      gap: 24px;
+      align-items: start;
+    }
+    .perms {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px 22px 18px;
+    }
+    .perms h4 {
+      margin: 0 0 10px;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--foreground-muted);
+    }
+    .perms ul {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .perms li {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--foreground);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .perms li::before {
+      content: "";
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--edge);
+      flex-shrink: 0;
+    }
+
+    .codeblock {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .codeblock-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.025);
+    }
+    .codeblock-head .file {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--foreground-muted);
+      letter-spacing: 0.4px;
+    }
+    .copy-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--foreground-muted);
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      cursor: pointer;
+      transition:
+        color 200ms var(--easing),
+        border-color 200ms var(--easing),
+        background 200ms var(--easing);
+    }
+    .copy-btn:hover {
+      color: var(--foreground);
+      border-color: var(--border-strong);
+      background: var(--surface);
+    }
+    .copy-btn:focus-visible {
+      outline: 2px solid var(--accent-strong);
+      outline-offset: 2px;
+    }
+    .codeblock pre {
+      margin: 0;
+      padding: 18px 16px;
+      overflow-x: auto;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--foreground);
+    }
+    .codeblock .tk-key  { color: #C0BAFF; }      /* yaml keys */
+    .codeblock .tk-val  { color: #C9D6E0; }      /* values */
+    .codeblock .tk-com  { color: var(--foreground-muted); font-style: italic; }
+    .codeblock .tk-num  { color: #7DD3FC; }
+    .codeblock .tk-env  { color: #FDE68A; }
+
+    /* ───── Footer ───── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 28px 0 40px;
+      margin-top: 32px;
+    }
+    .footer-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      font-size: 13px;
+      color: var(--foreground-muted);
+    }
+    .footer-row .right { font-style: italic; }
+
+    /* ───── Responsive ───── */
+    @media (max-width: 880px) {
+      .hero { padding: 64px 0 56px; }
+      .hero-grid { grid-template-columns: 1fr; gap: 36px; }
+      section { padding: 72px 0; }
+      .features { grid-template-columns: 1fr; }
+      .steps { grid-template-columns: 1fr; }
+      .install-grid { grid-template-columns: 1fr; }
+      h1 { font-size: clamp(32px, 8vw, 44px); }
+    }
+    @media (max-width: 480px) {
+      .wrap { padding: 0 18px; }
+      .hero { padding: 48px 0 40px; }
+      section { padding: 56px 0; }
+      .codeblock pre { font-size: 12px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        transition-duration: 0ms !important;
+        animation-duration: 0ms !important;
+        animation-iteration-count: 1 !important;
+      }
+    }
+
+    /* Subtle hero focus pulse — restrained, respects reduced-motion */
+    @keyframes pulse-ring {
+      0%, 100% { opacity: 0.55; }
+      50%      { opacity: 1; }
+    }
+    .pulse-ring {
+      animation: pulse-ring 3.6s var(--easing) infinite;
+      transform-origin: center;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ───── Top nav ───── -->
+  <header class="top-nav">
+    <div class="wrap top-nav-inner">
+      <a href="#" class="brand" aria-label="Koram home">
+        <svg class="brand-mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <circle cx="10" cy="11" r="4.5" fill="#7C3AED"/>
+          <circle cx="22" cy="21" r="4.5" fill="#0891B2"/>
+          <line x1="10" y1="11" x2="22" y2="21" stroke="#0891B2" stroke-width="1.6" stroke-linecap="round"/>
+          <circle cx="10" cy="11" r="4.5" fill="none" stroke="rgba(124,58,237,0.5)" stroke-width="1"/>
+        </svg>
+        <span>Koram</span>
+      </a>
+      <a class="nav-cta" href="#install">Install →</a>
+    </div>
+  </header>
+
+  <!-- ───── Hero ───── -->
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <span class="eyebrow"><span class="dot" aria-hidden="true"></span>for Immich</span>
+        <h1>See who's in your photos with whom.</h1>
+        <p class="lede">
+          Koram turns the face data already in your Immich library into a live force-directed graph — computed locally, exportable as PNG, CSV, or back into Immich as an album.
+        </p>
+        <div class="ctas">
+          <a class="btn primary" href="#install">
+            Get started
+            <svg class="arrow" width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path d="M3 7h8M7.5 3.5L11 7l-3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </a>
+          <a class="btn" href="#">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 2C6.48 2 2 6.58 2 12.21c0 4.5 2.87 8.31 6.85 9.66.5.09.68-.22.68-.48 0-.24-.01-.87-.01-1.7-2.78.61-3.37-1.36-3.37-1.36-.46-1.18-1.12-1.49-1.12-1.49-.91-.63.07-.62.07-.62 1.01.07 1.54 1.06 1.54 1.06.9 1.55 2.36 1.1 2.93.84.09-.66.35-1.1.64-1.36-2.22-.26-4.55-1.13-4.55-5.04 0-1.11.39-2.02 1.03-2.74-.1-.26-.45-1.3.1-2.7 0 0 .84-.27 2.75 1.04A9.5 9.5 0 0112 6.84a9.5 9.5 0 012.5.34c1.91-1.31 2.75-1.04 2.75-1.04.55 1.4.2 2.44.1 2.7.64.72 1.03 1.63 1.03 2.74 0 3.92-2.34 4.78-4.57 5.03.36.32.68.94.68 1.91 0 1.38-.01 2.49-.01 2.83 0 .27.18.58.69.48A10.02 10.02 0 0022 12.21C22 6.58 17.52 2 12 2z"/>
+            </svg>
+            View on GitHub
+          </a>
+        </div>
+      </div>
+
+      <!-- Hero graph -->
+      <div class="hero-graph" aria-hidden="true">
+        <svg viewBox="0 0 600 480" preserveAspectRatio="xMidYMid meet">
+          <defs>
+            <radialGradient id="halo-purple" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#7C3AED" stop-opacity="0.55"/>
+              <stop offset="60%" stop-color="#7C3AED" stop-opacity="0.10"/>
+              <stop offset="100%" stop-color="#7C3AED" stop-opacity="0"/>
+            </radialGradient>
+            <radialGradient id="halo-cyan" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#0891B2" stop-opacity="0.45"/>
+              <stop offset="60%" stop-color="#0891B2" stop-opacity="0.08"/>
+              <stop offset="100%" stop-color="#0891B2" stop-opacity="0"/>
+            </radialGradient>
+            <linearGradient id="av-warm" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#5C4633"/>
+              <stop offset="100%" stop-color="#27201A"/>
+            </linearGradient>
+            <linearGradient id="av-cool" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#384559"/>
+              <stop offset="100%" stop-color="#1B2230"/>
+            </linearGradient>
+            <linearGradient id="av-rose" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#5A3A48"/>
+              <stop offset="100%" stop-color="#2A1C24"/>
+            </linearGradient>
+            <linearGradient id="av-sage" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#3A4F44"/>
+              <stop offset="100%" stop-color="#1C2722"/>
+            </linearGradient>
+            <linearGradient id="av-sand" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#544A33"/>
+              <stop offset="100%" stop-color="#28231A"/>
+            </linearGradient>
+          </defs>
+
+          <!-- Edges: cyan, weighted via stroke-width and opacity -->
+          <g stroke="#0891B2" stroke-linecap="round" fill="none">
+            <line x1="190" y1="160" x2="320" y2="220" stroke-width="2.2" stroke-opacity="0.55"/>
+            <line x1="320" y1="220" x2="430" y2="170" stroke-width="3.0" stroke-opacity="0.78"/>
+            <line x1="320" y1="220" x2="280" y2="340" stroke-width="2.6" stroke-opacity="0.62"/>
+            <line x1="320" y1="220" x2="450" y2="320" stroke-width="1.8" stroke-opacity="0.45"/>
+            <line x1="430" y1="170" x2="500" y2="240" stroke-width="1.6" stroke-opacity="0.40"/>
+            <line x1="190" y1="160" x2="120" y2="270" stroke-width="1.8" stroke-opacity="0.42"/>
+            <line x1="280" y1="340" x2="170" y2="380" stroke-width="2.0" stroke-opacity="0.52"/>
+            <line x1="280" y1="340" x2="450" y2="320" stroke-width="2.4" stroke-opacity="0.60"/>
+            <line x1="120" y1="270" x2="170" y2="380" stroke-width="1.4" stroke-opacity="0.35"/>
+            <line x1="450" y1="320" x2="500" y2="240" stroke-width="1.4" stroke-opacity="0.34"/>
+            <line x1="430" y1="170" x2="320" y2="100" stroke-width="1.6" stroke-opacity="0.40"/>
+            <line x1="320" y1="100" x2="190" y2="160" stroke-width="1.4" stroke-opacity="0.36"/>
+          </g>
+
+          <!-- Halos for the two "focused" nodes -->
+          <circle cx="320" cy="220" r="60" fill="url(#halo-purple)" class="pulse-ring"/>
+          <circle cx="280" cy="340" r="52" fill="url(#halo-cyan)"/>
+
+          <!-- Nodes: avatar circle + ring -->
+          <g font-family="Inter, sans-serif" font-weight="500" font-size="11" fill="#EDEDEF">
+
+            <!-- Mary (focused, purple ring) -->
+            <g>
+              <circle cx="320" cy="220" r="26" fill="url(#av-warm)"/>
+              <circle cx="320" cy="220" r="26" fill="none" stroke="#7C3AED" stroke-width="2"/>
+              <text x="320" y="224" text-anchor="middle" fill="#EDEDEF" opacity="0.85">M</text>
+              <text x="320" y="262" text-anchor="middle" font-size="11" fill="#EDEDEF">Mary</text>
+            </g>
+
+            <!-- Diego (focused, cyan ring) -->
+            <g>
+              <circle cx="280" cy="340" r="22" fill="url(#av-cool)"/>
+              <circle cx="280" cy="340" r="22" fill="none" stroke="#0891B2" stroke-width="2"/>
+              <text x="280" y="344" text-anchor="middle" fill="#EDEDEF" opacity="0.85">D</text>
+              <text x="280" y="378" text-anchor="middle" font-size="11" fill="#EDEDEF">Diego</text>
+            </g>
+
+            <!-- Alex -->
+            <g>
+              <circle cx="430" cy="170" r="20" fill="url(#av-sage)"/>
+              <circle cx="430" cy="170" r="20" fill="none" stroke="rgba(255,255,255,0.16)" stroke-width="1"/>
+              <text x="430" y="174" text-anchor="middle" fill="#EDEDEF" opacity="0.75">A</text>
+              <text x="430" y="204" text-anchor="middle" font-size="11" fill="#C9CDD4">Alex</text>
+            </g>
+
+            <!-- Sami -->
+            <g>
+              <circle cx="190" cy="160" r="20" fill="url(#av-rose)"/>
+              <circle cx="190" cy="160" r="20" fill="none" stroke="rgba(255,255,255,0.16)" stroke-width="1"/>
+              <text x="190" y="164" text-anchor="middle" fill="#EDEDEF" opacity="0.75">S</text>
+              <text x="190" y="194" text-anchor="middle" font-size="11" fill="#C9CDD4">Sami</text>
+            </g>
+
+            <!-- Lina -->
+            <g>
+              <circle cx="120" cy="270" r="18" fill="url(#av-sand)"/>
+              <circle cx="120" cy="270" r="18" fill="none" stroke="rgba(255,255,255,0.16)" stroke-width="1"/>
+              <text x="120" y="274" text-anchor="middle" fill="#EDEDEF" opacity="0.75">L</text>
+              <text x="120" y="302" text-anchor="middle" font-size="11" fill="#C9CDD4">Lina</text>
+            </g>
+
+            <!-- Joon -->
+            <g>
+              <circle cx="170" cy="380" r="16" fill="url(#av-sage)"/>
+              <circle cx="170" cy="380" r="16" fill="none" stroke="rgba(255,255,255,0.16)" stroke-width="1"/>
+              <text x="170" y="384" text-anchor="middle" fill="#EDEDEF" opacity="0.75">J</text>
+              <text x="170" y="410" text-anchor="middle" font-size="11" fill="#C9CDD4">Joon</text>
+            </g>
+
+            <!-- Noor -->
+            <g>
+              <circle cx="450" cy="320" r="19" fill="url(#av-warm)"/>
+              <circle cx="450" cy="320" r="19" fill="none" stroke="rgba(255,255,255,0.16)" stroke-width="1"/>
+              <text x="450" y="324" text-anchor="middle" fill="#EDEDEF" opacity="0.75">N</text>
+              <text x="450" y="354" text-anchor="middle" font-size="11" fill="#C9CDD4">Noor</text>
+            </g>
+
+            <!-- Theo -->
+            <g>
+              <circle cx="500" cy="240" r="16" fill="url(#av-cool)"/>
+              <circle cx="500" cy="240" r="16" fill="none" stroke="rgba(255,255,255,0.16)" stroke-width="1"/>
+              <text x="500" y="244" text-anchor="middle" fill="#EDEDEF" opacity="0.75">T</text>
+              <text x="500" y="270" text-anchor="middle" font-size="11" fill="#C9CDD4">Theo</text>
+            </g>
+
+            <!-- Eva -->
+            <g>
+              <circle cx="320" cy="100" r="17" fill="url(#av-rose)"/>
+              <circle cx="320" cy="100" r="17" fill="none" stroke="rgba(255,255,255,0.16)" stroke-width="1"/>
+              <text x="320" y="104" text-anchor="middle" fill="#EDEDEF" opacity="0.75">E</text>
+              <text x="320" y="132" text-anchor="middle" font-size="11" fill="#C9CDD4">Eva</text>
+            </g>
+          </g>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───── Features ───── -->
+  <section id="features">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="section-eyebrow">What it does</div>
+        <h2 class="section-title">A graph of who's together, drawn from data you already have.</h2>
+      </div>
+      <div class="features">
+        <article class="card">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="9" cy="9" r="3"/>
+              <circle cx="17" cy="14" r="3"/>
+              <path d="M11 11l4 2"/>
+            </svg>
+          </div>
+          <h3>Co-occurrence, not recognition.</h3>
+          <p>Koram trusts Immich's existing person assignments. It never re-runs a face model — it just counts how often two people appear in the same photo.</p>
+        </article>
+
+        <article class="card">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 4v4M12 16v4M4 12h4M16 12h4"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </div>
+          <h3>Live force layout.</h3>
+          <p>D3-force on HTML canvas. Drag a node to pin it, scroll to zoom, double-click to release. The graph re-flows by edge weight in real time.</p>
+        </article>
+
+        <article class="card">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3v12M7 10l5 5 5-5"/>
+              <path d="M5 18h14"/>
+            </svg>
+          </div>
+          <h3>Export anywhere.</h3>
+          <p>Download a 2× PNG, save the underlying co-occurrence as CSV, or push the graph back into Immich as an asset in a dedicated album.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───── Showcase: How it looks ───── -->
+  <section id="how-it-looks">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="section-eyebrow">How it looks</div>
+        <h2 class="section-title">Your library, one frame.</h2>
+      </div>
+
+      <div class="showcase">
+        <svg class="showcase-svg" viewBox="0 0 1200 675" preserveAspectRatio="xMidYMid meet" aria-label="Stylized screenshot of the Koram graph with about 30 nodes.">
+          <defs>
+            <radialGradient id="hover-halo" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#7C3AED" stop-opacity="0.65"/>
+              <stop offset="55%" stop-color="#7C3AED" stop-opacity="0.10"/>
+              <stop offset="100%" stop-color="#7C3AED" stop-opacity="0"/>
+            </radialGradient>
+            <linearGradient id="sav-1" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#5C4633"/><stop offset="100%" stop-color="#241D17"/></linearGradient>
+            <linearGradient id="sav-2" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#384559"/><stop offset="100%" stop-color="#1B2230"/></linearGradient>
+            <linearGradient id="sav-3" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#5A3A48"/><stop offset="100%" stop-color="#2A1C24"/></linearGradient>
+            <linearGradient id="sav-4" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#3A4F44"/><stop offset="100%" stop-color="#1C2722"/></linearGradient>
+            <linearGradient id="sav-5" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#544A33"/><stop offset="100%" stop-color="#28231A"/></linearGradient>
+            <linearGradient id="sav-6" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#4A3458"/><stop offset="100%" stop-color="#231A2C"/></linearGradient>
+          </defs>
+
+          <!-- Edges (a denser cluster with one prominent edge between the focused pair) -->
+          <g stroke="#0891B2" stroke-linecap="round" fill="none" stroke-opacity="0.4">
+            <line x1="200" y1="180" x2="380" y2="240" stroke-width="1.4"/>
+            <line x1="380" y1="240" x2="540" y2="200" stroke-width="2"/>
+            <line x1="540" y1="200" x2="700" y2="280" stroke-width="2.2"/>
+            <line x1="700" y1="280" x2="860" y2="220" stroke-width="1.6"/>
+            <line x1="860" y1="220" x2="980" y2="320" stroke-width="1.4"/>
+            <line x1="540" y1="200" x2="600" y2="100" stroke-width="1.2"/>
+            <line x1="700" y1="280" x2="780" y2="400" stroke-width="1.8"/>
+            <line x1="380" y1="240" x2="320" y2="380" stroke-width="1.6"/>
+            <line x1="320" y1="380" x2="200" y2="450" stroke-width="1.4"/>
+            <line x1="320" y1="380" x2="500" y2="450" stroke-width="2.2"/>
+            <line x1="500" y1="450" x2="700" y2="500" stroke-width="2"/>
+            <line x1="700" y1="500" x2="860" y2="540" stroke-width="1.6"/>
+            <line x1="780" y1="400" x2="900" y2="460" stroke-width="1.4"/>
+            <line x1="540" y1="200" x2="380" y2="120" stroke-width="1.4"/>
+            <line x1="200" y1="180" x2="120" y2="280" stroke-width="1.4"/>
+            <line x1="120" y1="280" x2="200" y2="450" stroke-width="1.4"/>
+            <line x1="120" y1="280" x2="60" y2="380" stroke-width="1.2"/>
+            <line x1="980" y1="320" x2="1080" y2="240" stroke-width="1.4"/>
+            <line x1="980" y1="320" x2="1100" y2="420" stroke-width="1.4"/>
+            <line x1="860" y1="540" x2="1000" y2="500" stroke-width="1.6"/>
+            <line x1="500" y1="450" x2="600" y2="560" stroke-width="1.4"/>
+            <line x1="600" y1="560" x2="780" y2="400" stroke-width="1.6"/>
+            <line x1="600" y1="560" x2="700" y2="500" stroke-width="1.6"/>
+            <line x1="60" y1="380" x2="200" y2="450" stroke-width="1.2"/>
+            <line x1="380" y1="120" x2="200" y2="180" stroke-width="1.2"/>
+          </g>
+
+          <!-- Highlighted edge: Mary ↔ Diego -->
+          <line x1="540" y1="200" x2="500" y2="450" stroke="#0891B2" stroke-width="3.4" stroke-opacity="1" stroke-linecap="round"/>
+
+          <!-- Hover halo on Mary -->
+          <circle cx="540" cy="200" r="62" fill="url(#hover-halo)"/>
+
+          <!-- Nodes -->
+          <g font-family="Inter, sans-serif" font-weight="500" font-size="11" fill="#C9CDD4">
+            <!-- Mary (hovered) -->
+            <g>
+              <circle cx="540" cy="200" r="26" fill="url(#sav-1)"/>
+              <circle cx="540" cy="200" r="26" fill="none" stroke="#7C3AED" stroke-width="2"/>
+              <text x="540" y="241" text-anchor="middle" font-size="12" fill="#EDEDEF" font-weight="500">Mary</text>
+            </g>
+            <!-- Diego (other end of the highlighted edge) -->
+            <g>
+              <circle cx="500" cy="450" r="22" fill="url(#sav-2)"/>
+              <circle cx="500" cy="450" r="22" fill="none" stroke="#0891B2" stroke-width="2"/>
+              <text x="500" y="487" text-anchor="middle" font-size="12" fill="#EDEDEF" font-weight="500">Diego</text>
+            </g>
+
+            <!-- Other named nodes -->
+            <g opacity="0.85">
+              <circle cx="380" cy="240" r="18" fill="url(#sav-3)" stroke="rgba(255,255,255,0.12)"/>
+              <text x="380" y="271" text-anchor="middle">Sami</text>
+
+              <circle cx="700" cy="280" r="20" fill="url(#sav-4)" stroke="rgba(255,255,255,0.12)"/>
+              <text x="700" y="313" text-anchor="middle">Alex</text>
+
+              <circle cx="860" cy="220" r="17" fill="url(#sav-5)" stroke="rgba(255,255,255,0.12)"/>
+              <text x="860" y="250" text-anchor="middle">Lina</text>
+
+              <circle cx="200" cy="180" r="18" fill="url(#sav-6)" stroke="rgba(255,255,255,0.12)"/>
+              <text x="200" y="211" text-anchor="middle">Joon</text>
+
+              <circle cx="320" cy="380" r="18" fill="url(#sav-1)" stroke="rgba(255,255,255,0.12)"/>
+              <text x="320" y="411" text-anchor="middle">Noor</text>
+
+              <circle cx="780" cy="400" r="17" fill="url(#sav-2)" stroke="rgba(255,255,255,0.12)"/>
+              <text x="780" y="430" text-anchor="middle">Theo</text>
+
+              <circle cx="980" cy="320" r="16" fill="url(#sav-3)" stroke="rgba(255,255,255,0.12)"/>
+              <text x="980" y="349" text-anchor="middle">Eva</text>
+
+              <circle cx="700" cy="500" r="16" fill="url(#sav-4)" stroke="rgba(255,255,255,0.12)"/>
+              <text x="700" y="529" text-anchor="middle">Iris</text>
+
+              <circle cx="600" cy="100" r="14" fill="url(#sav-5)" stroke="rgba(255,255,255,0.12)"/>
+              <text x="600" y="127" text-anchor="middle">Tomo</text>
+
+              <circle cx="120" cy="280" r="14" fill="url(#sav-6)" stroke="rgba(255,255,255,0.12)"/>
+              <text x="120" y="307" text-anchor="middle">Aki</text>
+            </g>
+
+            <!-- Smaller / unnamed nodes -->
+            <g fill="#9097A1" opacity="0.75">
+              <circle cx="200" cy="450" r="12" fill="url(#sav-2)" stroke="rgba(255,255,255,0.10)"/>
+              <circle cx="380" cy="120" r="11" fill="url(#sav-3)" stroke="rgba(255,255,255,0.10)"/>
+              <circle cx="60" cy="380" r="10" fill="url(#sav-4)" stroke="rgba(255,255,255,0.10)"/>
+              <circle cx="860" cy="540" r="13" fill="url(#sav-5)" stroke="rgba(255,255,255,0.10)"/>
+              <circle cx="900" cy="460" r="10" fill="url(#sav-6)" stroke="rgba(255,255,255,0.10)"/>
+              <circle cx="1000" cy="500" r="11" fill="url(#sav-1)" stroke="rgba(255,255,255,0.10)"/>
+              <circle cx="1080" cy="240" r="10" fill="url(#sav-2)" stroke="rgba(255,255,255,0.10)"/>
+              <circle cx="1100" cy="420" r="11" fill="url(#sav-3)" stroke="rgba(255,255,255,0.10)"/>
+              <circle cx="600" cy="560" r="14" fill="url(#sav-4)" stroke="rgba(255,255,255,0.10)"/>
+              <circle cx="430" cy="540" r="9"  fill="url(#sav-5)" stroke="rgba(255,255,255,0.10)"/>
+              <circle cx="990" cy="180" r="9"  fill="url(#sav-6)" stroke="rgba(255,255,255,0.10)"/>
+              <circle cx="260" cy="320" r="8"  fill="url(#sav-1)" stroke="rgba(255,255,255,0.10)"/>
+              <circle cx="660" cy="170" r="9"  fill="url(#sav-2)" stroke="rgba(255,255,255,0.10)"/>
+              <circle cx="800" cy="100" r="9"  fill="url(#sav-3)" stroke="rgba(255,255,255,0.10)"/>
+              <circle cx="430" cy="40"  r="8"  fill="url(#sav-4)" stroke="rgba(255,255,255,0.10)"/>
+              <circle cx="160" cy="540" r="10" fill="url(#sav-5)" stroke="rgba(255,255,255,0.10)"/>
+              <circle cx="60"  cy="500" r="9"  fill="url(#sav-6)" stroke="rgba(255,255,255,0.10)"/>
+              <circle cx="370" cy="600" r="11" fill="url(#sav-1)" stroke="rgba(255,255,255,0.10)"/>
+            </g>
+          </g>
+
+          <!-- Tooltip near the highlighted edge midpoint (~520, 325) -->
+          <g transform="translate(560 300)">
+            <rect x="0" y="0" rx="10" ry="10" width="240" height="36" fill="rgba(10,10,12,0.92)" stroke="rgba(255,255,255,0.14)"/>
+            <text x="16" y="23" font-family="JetBrains Mono, monospace" font-size="13" fill="#EDEDEF">
+              Mary ↔ Diego · 42 photos
+            </text>
+          </g>
+          <line x1="520" y1="325" x2="560" y2="318" stroke="rgba(255,255,255,0.32)" stroke-width="1"/>
+        </svg>
+
+        <p class="showcase-caption">127 nodes · 1,842 edges</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───── How it works ───── -->
+  <section id="how-it-works">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="section-eyebrow">How it works</div>
+        <h2 class="section-title">Three steps from API key to graph.</h2>
+      </div>
+
+      <ol class="steps" style="list-style: none; padding: 0; margin: 0;">
+        <li class="step">
+          <div class="step-num">01 / Connect</div>
+          <h3>Point Koram at Immich.</h3>
+          <p>Drop an API key into <code>/app/config/koram.toml</code> (or pass <code>IMMICH_API_KEY</code> as an env var). Permissions on the right.</p>
+        </li>
+        <li class="step">
+          <div class="step-num">02 / Pick faces</div>
+          <h3>Choose who to graph.</h3>
+          <p>Open the side drawer, search and select people. Optionally narrow by date range. Settings persist in your browser.</p>
+        </li>
+        <li class="step">
+          <div class="step-num">03 / Compute &amp; explore</div>
+          <h3>Watch the graph form.</h3>
+          <p>Koram sweeps each person's photos with concurrency 8, builds the matrix on disk, and the canvas re-flows live as you drag.</p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ───── Install ───── -->
+  <section id="install">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="section-eyebrow">Install</div>
+        <h2 class="section-title">One Compose file. One port. Done.</h2>
+      </div>
+
+      <div class="install-grid">
+        <aside class="perms" aria-label="Required Immich API permissions">
+          <h4>API key permissions</h4>
+          <ul>
+            <li>album.create</li>
+            <li>album.read</li>
+            <li>album.update</li>
+            <li>asset.read</li>
+            <li>asset.upload</li>
+            <li>asset.view</li>
+            <li>asset.download</li>
+            <li>person.read</li>
+            <li>server.about</li>
+          </ul>
+        </aside>
+
+        <div class="codeblock" role="region" aria-label="Docker Compose configuration for Koram">
+          <div class="codeblock-head">
+            <span class="file">docker-compose.yml</span>
+            <button class="copy-btn" type="button" data-copy="compose">Copy</button>
+          </div>
+<pre id="compose"><span class="tk-key">services</span>:
+  <span class="tk-key">koram</span>:
+    <span class="tk-key">image</span>: <span class="tk-val">koram:latest</span>
+    <span class="tk-key">container_name</span>: <span class="tk-val">koram</span>
+    <span class="tk-key">user</span>: <span class="tk-num">1000:1000</span>
+    <span class="tk-key">ports</span>:
+      - <span class="tk-val">"5001:5000"</span>
+    <span class="tk-key">environment</span>:
+      - <span class="tk-env">IMMICH_API_KEY</span>=<span class="tk-val">your-api-key</span>
+      - <span class="tk-env">IMMICH_BASE_URL</span>=<span class="tk-val">http://your-immich-host:2283</span>
+    <span class="tk-key">volumes</span>:
+      - <span class="tk-val">./config:/app/config</span>
+      - <span class="tk-val">./cache:/app/cache</span>
+    <span class="tk-key">restart</span>: <span class="tk-val">unless-stopped</span></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───── Footer ───── -->
+  <footer>
+    <div class="wrap footer-row">
+      <span>MIT licensed · self-hosted · no telemetry</span>
+      <span class="right">made for an Immich library that already knows everyone</span>
+    </div>
+  </footer>
+
+  <script>
+    // Minimal copy-to-clipboard for the compose block.
+    document.querySelectorAll('.copy-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-copy');
+        const el = document.getElementById(id);
+        if (!el) return;
+        try {
+          await navigator.clipboard.writeText(el.innerText);
+          const orig = btn.textContent;
+          btn.textContent = 'Copied';
+          setTimeout(() => { btn.textContent = orig; }, 1400);
+        } catch {
+          // Silent: fall back to user manually selecting; no console noise.
+        }
+      });
+    });
+  </script>
+</body>
+</html>
