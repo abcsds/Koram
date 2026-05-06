@@ -98,6 +98,61 @@ impl ImmichClient {
         let resp = Self::check(resp, "Validate connection").await?;
         Ok(resp.json().await?)
     }
+
+    pub async fn get_people(&self) -> Result<Vec<Person>> {
+        let url = format!("{}/people", self.base_url);
+        let resp = self.client.get(&url).header("x-api-key", &self.api_key).send().await?;
+        let resp = Self::check(resp, "Get people").await?;
+        #[derive(Deserialize)]
+        struct R { people: Vec<Person> }
+        let r: R = resp.json().await?;
+        Ok(r.people)
+    }
+
+    pub async fn get_person_thumbnail(&self, person_id: &str) -> Result<(bytes::Bytes, String)> {
+        let url = format!("{}/people/{}/thumbnail", self.base_url, urlencode(person_id));
+        let resp = self.client.get(&url).header("x-api-key", &self.api_key).send().await?;
+        let resp = Self::check(resp, "Get person thumbnail").await?;
+        let ct = resp.headers().get("content-type")
+            .and_then(|v| v.to_str().ok()).unwrap_or("image/jpeg").to_string();
+        let bytes = resp.bytes().await?;
+        Ok((bytes, ct))
+    }
+
+    /// Paginated fetch of every asset that contains `person_id`, optionally filtered by date range.
+    /// Returns assets with `with_people=true` so the caller can read every face per asset.
+    pub async fn search_person_assets(
+        &self,
+        person_id: &str,
+        taken_after: Option<&str>,
+        taken_before: Option<&str>,
+    ) -> Result<Vec<Asset>> {
+        let mut all = Vec::new();
+        let mut page = 1u32;
+        loop {
+            let params = SearchParams {
+                person_ids: Some(vec![person_id.to_string()]),
+                taken_after: taken_after.map(String::from),
+                taken_before: taken_before.map(String::from),
+                asset_type: "IMAGE".into(),
+                page,
+                size: 100,
+                with_people: true,
+            };
+            let url = format!("{}/search/metadata", self.base_url);
+            let resp = self.client.post(&url)
+                .header("x-api-key", &self.api_key)
+                .json(&params)
+                .send().await?;
+            let resp = Self::check(resp, "Search assets").await?;
+            let r: SearchResponse = resp.json().await?;
+            all.extend(r.assets.items);
+            if r.assets.next_page.is_none() { break; }
+            page += 1;
+            if page > 1000 { tracing::warn!("Pagination cap hit"); break; }
+        }
+        Ok(all)
+    }
 }
 
 #[cfg(test)]
@@ -110,5 +165,20 @@ mod tests {
         assert_eq!(ImmichClient::sanitize_base_url("http://x:2283/api/"), "http://x:2283/api");
         assert_eq!(ImmichClient::sanitize_base_url("http://x:2283"), "http://x:2283/api");
         assert_eq!(ImmichClient::sanitize_base_url("http://x:2283/"), "http://x:2283/api");
+    }
+
+    fn demo_client() -> ImmichClient {
+        ImmichClient::new(&ApiConfig {
+            api_key: "1bpgd3LpG30Zr3IEPNV3sWhIEqMuUGmzK3jWNh59JU".into(),
+            base_url: "https://demo.immich.app/api".into(),
+            timeout_secs: 30,
+        }).unwrap()
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn demo_get_people() {
+        let people = demo_client().get_people().await.unwrap();
+        assert!(!people.is_empty(), "demo server returned no people");
     }
 }
