@@ -135,7 +135,13 @@
 <style>
   .canvas-wrap {
     position: fixed; inset: 0;
-    background: var(--bg-deep);
+    /* Subtle accent wash so the canvas doesn't read as a flat black void. Matches the
+       landing-page hero: purple from the upper-right, cyan from the lower-left. The
+       graph canvas clears to transparent, so this shows through between nodes. */
+    background:
+      radial-gradient(1100px 800px at 85% -5%, rgba(124, 58, 237, 0.18), transparent 70%),
+      radial-gradient(900px 700px at -5% 30%, rgba(8, 145, 178, 0.14), transparent 70%),
+      var(--bg-deep);
   }
   .banner {
     position: fixed; top: 44px; left: 0; right: 0;
