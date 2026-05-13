@@ -19,7 +19,7 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState::new(config);
     let app = web::create_router(state.clone());
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 5000));
+    let addr = SocketAddr::from(([0, 0, 0, 0], 5001));
     tracing::info!("koram listening on http://{}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;

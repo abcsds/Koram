@@ -898,6 +898,7 @@
             <li>asset.view</li>
             <li>asset.download</li>
             <li>person.read</li>
+            <li>person.statistics</li>
             <li>server.about</li>
           </ul>
         </aside>
@@ -913,14 +914,14 @@
     <span class="tk-key">container_name</span>: <span class="tk-val">koram</span>
     <span class="tk-key">user</span>: <span class="tk-num">1000:1000</span>
     <span class="tk-key">ports</span>:
-      - <span class="tk-val">"5001:5000"</span>
+      - <span class="tk-val">"5001:5001"</span>
     <span class="tk-key">environment</span>:
       - <span class="tk-env">IMMICH_API_KEY</span>=<span class="tk-val">your-api-key</span>
       - <span class="tk-env">IMMICH_BASE_URL</span>=<span class="tk-val">http://your-immich-host:2283</span>
     <span class="tk-key">volumes</span>:
       - <span class="tk-val">./config:/app/config</span>
       - <span class="tk-val">./cache:/app/cache</span>
-    <span class="tk-key">restart</span>: <span class="tk-val">unless-stopped</span></pre>
+    <span class="tk-key">restart</span>: <span class="tk-val">always</span></pre>
         </div>
       </div>
     </div>

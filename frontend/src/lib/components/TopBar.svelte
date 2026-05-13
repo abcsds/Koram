@@ -1,5 +1,6 @@
 <script>
   import ConnectionStatus from './ConnectionStatus.svelte';
+  import HelpDialog from './HelpDialog.svelte';
   import { graphState, settings } from '../store.svelte.js';
   import { formatCount } from '../utils.js';
 
@@ -7,6 +8,8 @@
 
   let visible = $state(true);
   let hideTimer = null;
+  let helpOpen = $state(false);
+  function toggleHelp() { helpOpen = !helpOpen; }
 
   function bump() {
     visible = true;
@@ -58,6 +61,7 @@
     </svg>
   </button>
   <div class="counter mono">{counter}</div>
+  <button class="help" onclick={toggleHelp} aria-label="Show keybindings" title="Keybindings (?)">?</button>
   <div class="status"><ConnectionStatus /></div>
 
   {#if computing}
@@ -66,6 +70,8 @@
     </div>
   {/if}
 </div>
+
+<HelpDialog bind:open={helpOpen} />
 
 <style>
   .bar {
@@ -94,6 +100,20 @@
     color: var(--foreground);
   }
   .hamburger:hover { background: var(--surface); }
+
+  .help {
+    width: 28px; height: 28px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    color: var(--foreground-muted);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .help:hover { background: var(--surface); color: var(--foreground); }
 
   .counter {
     flex: 1;

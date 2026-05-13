@@ -7,3 +7,6 @@ cache/
 .env
 *.swp
 .DS_Store
+DEPLOY.md
+FUCKUPS.md
+backlog/

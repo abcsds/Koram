@@ -1,5 +1,5 @@
 <script>
-  import { onDestroy } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import { drag } from 'd3-drag';
   import { select } from 'd3-selection';
   import { zoom, zoomIdentity } from 'd3-zoom';
@@ -8,6 +8,7 @@
   import { jaccard } from '../graph/jaccard.js';
   import { settings, graphState } from '../store.svelte.js';
   import { API } from '../constants.js';
+  import { formatCount } from '../utils.js';
 
   let canvasEl = $state(null);
   let width = $state(0);
@@ -26,9 +27,17 @@
   const cssVar = (name) =>
     getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
+  // A node is "displayable" if it has a name, OR the user has opted to show
+  // unnamed faces. The compute pipeline returns one PersonNode per selected ID
+  // regardless of whether the face still exists in Immich, so deleted/merged
+  // faces and unnamed faces both surface here as `name == null`.
+  function isDisplayable(person) {
+    return Boolean(person?.name) || settings.showUnnamed;
+  }
+
   function buildEdges(result) {
     const peopleById = new Map(result.people.map(p => [p.id, p]));
-    const idSet = new Set(result.people.map(p => p.id));
+    const idSet = new Set(result.people.filter(isDisplayable).map(p => p.id));
     const out = [];
     for (const pair of result.pairs) {
       if (!idSet.has(pair.a) || !idSet.has(pair.b)) continue;
@@ -62,7 +71,7 @@
     const r = graphState.result;
     if (!r) { nodes = []; edges = []; adjacency = new Map(); return; }
 
-    nodes = r.people.map(p => ({
+    nodes = r.people.filter(isDisplayable).map(p => ({
       id: p.id,
       name: p.name,
       total: p.total,
@@ -98,6 +107,7 @@
     simulation.force('link').links(edges);
     simulation.alpha(0.3).restart();
   }
+
 
   function displayMode(id) {
     const override = settings.perPersonOverrides[id];
@@ -158,7 +168,13 @@
     const n = nearestNode(gx, gy);
     if (n) {
       hover = n.id;
-      tooltip = null;
+      // Show name + photo count on node hover. `total` lands on the node from the
+      // CoOccurrenceResult (rebuildGraph), which sources it from the cached result.
+      const count = n.total ?? 0;
+      tooltip = {
+        x: ev.clientX, y: ev.clientY,
+        text: `${label(n.id)} · ${formatCount(count)} photos`,
+      };
       render();
       return;
     }
@@ -182,6 +198,37 @@
     if (dragMoved) { dragMoved = false; return; }
     const [gx, gy] = clientToGraph(ev.clientX, ev.clientY);
     const n = nearestNode(gx, gy);
+    // Alt+click on a node deep-links into the Immich /people/{id} page.
+    // We use Alt (rather than Shift) to leave Shift free for browser- and
+    // user-defined multi-select gestures.
+    //
+    // Subtle: even when triggered programmatically, browsers honor the live
+    // keyboard state for target=_blank navigations — Shift maps to *new window*,
+    // Ctrl/Cmd to *new tab*, Alt to *download*. We force a clean new-tab open
+    // by dispatching an explicit MouseEvent with every modifier flag set to
+    // false, which Chromium / Firefox prefer over the live state. The anchor
+    // is inserted into the DOM because some browsers ignore clicks on
+    // detached elements.
+    if (n && ev.altKey && graphState.immichBaseUrl) {
+      const url = `${graphState.immichBaseUrl}/people/${encodeURIComponent(n.id)}`;
+      const a = document.createElement('a');
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.style.cssText = 'position:fixed;left:-9999px;top:-9999px;';
+      document.body.appendChild(a);
+      a.dispatchEvent(new MouseEvent('click', {
+        view: window,
+        bubbles: true,
+        cancelable: true,
+        ctrlKey: false,
+        shiftKey: false,
+        metaKey: false,
+        altKey: false,
+      }));
+      a.remove();
+      return;
+    }
     locked = n ? n.id : null;
     render();
   }
@@ -225,6 +272,20 @@
     }
   });
 
+  $effect(() => {
+    // Toggling "Show unnamed" changes the displayable node set — rebuild the
+    // simulation from scratch. Layout re-explodes but the toggle is rare.
+    // Track `showUnnamed` only; untrack the condition so this effect doesn't
+    // re-fire (and double-rebuild) when graphState.result changes — that path
+    // is already handled by the rebuildGraph effect above.
+    settings.showUnnamed;
+    untrack(() => {
+      if (graphState.result && simulation && resultBuiltFor === graphState.result) {
+        rebuildGraph();
+      }
+    });
+  });
+
   // Wire d3-zoom + d3-drag
   $effect(() => {
     if (!canvasEl) return;
@@ -265,7 +326,8 @@
       .on('end', (ev) => {
         if (!ev.subject) return;
         if (!ev.active) simulation.alphaTarget(0);
-        // Keep fx/fy → pinned. Double-click clears.
+        ev.subject.fx = null;
+        ev.subject.fy = null;
       });
 
     sel.call(dragBehavior);

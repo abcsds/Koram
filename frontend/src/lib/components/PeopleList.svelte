@@ -28,6 +28,28 @@
     });
   });
 
+  // Keep `settings.selected` in sync with reality. The compute pipeline emits one
+  // graph node per selected ID, regardless of whether the face still exists in
+  // Immich — so stale IDs render as ghost nodes (label "#xxxx", count 0). Two
+  // sources of stale IDs:
+  //   1. Faces the user picked, then Immich merged/deleted → not in /api/people
+  //      anymore (so even after refresh, the search returns 0 assets for them).
+  //   2. Unnamed faces still selected after the user unchecks "Show unnamed".
+  // We prune both. Skip the whole pass while `people` is still loading to avoid
+  // nuking the selection on first mount.
+  $effect(() => {
+    if (people.length === 0) return;
+    const byId = new Map(people.map(p => [p.id, p]));
+    const showUnnamed = settings.showUnnamed;
+    const next = [...settings.selected].filter(id => {
+      const p = byId.get(id);
+      if (!p) return false;                  // gone from Immich
+      if (!p.name && !showUnnamed) return false;  // unnamed + hidden
+      return true;
+    });
+    if (next.length !== settings.selected.size) settings.setSelected(next);
+  });
+
   const startIdx = $derived(Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - 4));
   const endIdx   = $derived(Math.min(filtered.length, Math.ceil((scrollTop + viewportH) / ROW_HEIGHT) + 4));
   const padTop    = $derived(startIdx * ROW_HEIGHT);

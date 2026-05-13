@@ -1,0 +1,31 @@
+name: immich
+
+services:
+  immich-koram:
+    container_name: immich_koram
+    build:
+      # NOTE: build context is relative to the Compose *project directory*,
+      # not this file. The default `../koram` assumes this compose file is
+      # used as an overlay (`-f ../koram/docker-compose.yml`) from a sibling
+      # project directory. If you run compose from this repo's root, set
+      # `context: .` instead.
+      context: ../koram
+      dockerfile: Dockerfile
+    image: koram:local
+    user: "1000:1000"
+    ports:
+      - "5001:5001"
+    environment:
+      IMMICH_API_KEY: ${KORAM_API_KEY}
+      IMMICH_BASE_URL: http://immich-server:2283
+      # Public-facing Immich URL — used by the frontend to deep-link into
+      # /people/{id} from a user's browser. Must be set via the shell or .env;
+      # falls back to IMMICH_BASE_URL when empty, which is wrong for split
+      # internal/public deployments.
+      IMMICH_PUBLIC_URL: ${KORAM_PUBLIC_URL:-}
+    volumes:
+      - ${KORAM_LOCATION}/config:/app/config
+      - ${KORAM_LOCATION}/cache:/app/cache
+    depends_on:
+      - immich-server
+    restart: always

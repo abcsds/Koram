@@ -34,6 +34,7 @@ class GraphState {
   result = $state(null);                      // CoOccurrenceResult
   error = $state(null);
   progress = $state({ processed: 0, total: 0, currentPersonName: null });
+  immichBaseUrl = $state(null);               // e.g. 'http://immich.local:2283' — used to deep-link faces
 }
 
 export const settings = new Settings();

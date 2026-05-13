@@ -102,16 +102,16 @@
 
 <style>
   .drawer {
-    position: fixed; top: 0; right: 0; bottom: 0;
+    position: fixed; top: 0; left: 0; bottom: 0;
     width: 380px;
     display: flex; flex-direction: column;
     background: rgba(10, 10, 12, 0.82);
     backdrop-filter: blur(20px);
-    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
     z-index: 20;
     animation: slide 250ms var(--easing);
   }
-  @keyframes slide { from { transform: translateX(20px); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes slide { from { transform: translateX(-20px); opacity: 0; } to { transform: none; opacity: 1; } }
 
   .head {
     display: flex; align-items: center; justify-content: space-between;

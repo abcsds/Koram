@@ -56,6 +56,8 @@
   onMount(async () => {
     try {
       const conn = await getConnection();
+      // Stash the Immich base URL even on failure so any cached graph still deep-links.
+      if (conn.immich_base_url) graphState.immichBaseUrl = conn.immich_base_url;
       if (!conn.ok) connectionError = conn.error ?? 'Immich is unreachable.';
     } catch (e) {
       connectionError = e.message;
@@ -135,12 +137,13 @@
 <style>
   .canvas-wrap {
     position: fixed; inset: 0;
-    /* Subtle accent wash so the canvas doesn't read as a flat black void. Matches the
-       landing-page hero: purple from the upper-right, cyan from the lower-left. The
-       graph canvas clears to transparent, so this shows through between nodes. */
+    /* Subtle accent wash so the canvas doesn't read as a flat black void. The drawer
+       sits on the left, so both washes are biased to the right of the viewport where
+       the canvas is visible. The graph canvas clears to transparent, so this shows
+       through between nodes. */
     background:
-      radial-gradient(1100px 800px at 85% -5%, rgba(124, 58, 237, 0.18), transparent 70%),
-      radial-gradient(900px 700px at -5% 30%, rgba(8, 145, 178, 0.14), transparent 70%),
+      radial-gradient(1100px 800px at 95% -5%, rgba(124, 58, 237, 0.18), transparent 70%),
+      radial-gradient(900px 700px at 105% 70%, rgba(8, 145, 178, 0.14), transparent 70%),
       var(--bg-deep);
   }
   .banner {

@@ -122,6 +122,28 @@ impl ImmichClient {
         Ok(r.people)
     }
 
+    pub async fn get_person_statistics(&self, person_id: &str) -> Result<u64> {
+        let url = format!("{}/people/{}/statistics", self.base_url, urlencode(person_id));
+        let resp = self.client.get(&url).header("x-api-key", &self.api_key).send().await?;
+        let resp = Self::check(resp, "Get person statistics").await?;
+        let body = resp.text().await?;
+        // The Immich docs say `{"assets": N}`, but be tolerant of camelCase variants
+        // (`assetCount`, `numberOfPhotos`) seen on older deployments. Pick whichever
+        // numeric field is present.
+        let v: serde_json::Value = serde_json::from_str(&body)
+            .map_err(|e| Error::ImmichApi(format!("Get person statistics: bad JSON ({}): {}", e, body)))?;
+        let n = v.get("assets")
+            .or_else(|| v.get("assetCount"))
+            .or_else(|| v.get("numberOfPhotos"))
+            .and_then(|x| x.as_u64());
+        match n {
+            Some(n) => Ok(n),
+            None => Err(Error::ImmichApi(format!(
+                "Get person statistics for {}: no count field in {}", person_id, body
+            ))),
+        }
+    }
+
     pub async fn get_person_thumbnail(&self, person_id: &str) -> Result<(bytes::Bytes, String)> {
         let url = format!("{}/people/{}/thumbnail", self.base_url, urlencode(person_id));
         let resp = self.client.get(&url).header("x-api-key", &self.api_key).send().await?;
@@ -246,6 +268,7 @@ mod tests {
         ImmichClient::new(&ApiConfig {
             api_key: "1bpgd3LpG30Zr3IEPNV3sWhIEqMuUGmzK3jWNh59JU".into(),
             base_url: "https://demo.immich.app/api".into(),
+            public_url: None,
             timeout_secs: 30,
         }).unwrap()
     }
